@@ -1,0 +1,33 @@
+FROM debian:bookworm-slim
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y \
+    curl \
+    gnupg \
+    ca-certificates \
+    pdf2svg \
+    poppler-utils \
+    python3 \
+    python3-flask \
+    gunicorn \
+    && rm -rf /var/lib/apt/lists/*
+
+# install MiKTeX
+RUN curl -fsSL https://miktex.org/download/key | gpg --dearmor -o /usr/share/keyrings/miktex-keyring.gpg && \
+    echo "deb [signed-by=/usr/share/keyrings/miktex-keyring.gpg] https://miktex.org/download/debian bookworm universe" \
+    > /etc/apt/sources.list.d/miktex.list && \
+    apt-get update && apt-get install -y miktex && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN miktexsetup finish && \
+    initexmf --admin --set-config-value [MPM]AutoInstall=1 && \
+    initexmf --update-fndb
+
+WORKDIR /app
+
+COPY server.py .
+
+EXPOSE 8080
+
+CMD ["gunicorn", "-b", "0.0.0.0:8080", "server:app"]

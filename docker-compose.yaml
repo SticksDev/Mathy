@@ -1,0 +1,22 @@
+version: '3.9'
+
+services:
+    renderer:
+        build: ./renderer
+        deploy:
+            replicas: 4
+        mem_limit: 256m
+        cpus: 1
+        networks:
+            - mathy
+
+    bot:
+        build: .
+        env_file: .env
+        depends_on:
+            - renderer
+        networks:
+            - mathy
+
+networks:
+    mathy:
