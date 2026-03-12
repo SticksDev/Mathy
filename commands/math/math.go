@@ -1,4 +1,4 @@
-//go:build enablecgo
+//go:build cgo
 
 package math
 

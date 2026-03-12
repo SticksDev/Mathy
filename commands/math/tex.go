@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/bwmarrin/discordgo"
@@ -91,8 +92,8 @@ func (t *Tex) HandleModalSubmit(ctx *utils.Context) {
 
 	if resp.StatusCode != http.StatusOK {
 		var errResp struct {
-			Error string `json:"error"`
-			Log   string `json:"log"`
+			Error   string   `json:"error"`
+			Details []string `json:"details"`
 		}
 		json.Unmarshal(respBody, &errResp)
 
@@ -100,13 +101,8 @@ func (t *Tex) HandleModalSubmit(ctx *utils.Context) {
 		if errResp.Error != "" {
 			description += fmt.Sprintf("\n**Error:** %s", errResp.Error)
 		}
-		if errResp.Log != "" {
-			// Trim log to last 500 chars to avoid embed limits
-			log := errResp.Log
-			if len(log) > 500 {
-				log = log[len(log)-500:]
-			}
-			description += fmt.Sprintf("\n**Log:**\n```\n%s\n```", log)
+		if len(errResp.Details) > 0 {
+			description += fmt.Sprintf("\n```\n%s\n```", strings.Join(errResp.Details, "\n"))
 		}
 
 		ctx.FollowupEmbed(&discordgo.MessageEmbed{
@@ -124,7 +120,7 @@ func (t *Tex) HandleModalSubmit(ctx *utils.Context) {
 			{
 				Title: "LaTeX Render",
 				Image: &discordgo.MessageEmbedImage{
-					URL: "attachment://render.svg",
+					URL: "attachment://render.png",
 				},
 				Footer: &discordgo.MessageEmbedFooter{
 					Text: fmt.Sprintf("Rendered in %s", elapsed),
@@ -134,8 +130,8 @@ func (t *Tex) HandleModalSubmit(ctx *utils.Context) {
 		},
 		Files: []*discordgo.File{
 			{
-				Name:        "render.svg",
-				ContentType: "image/svg+xml",
+				Name:        "render.png",
+				ContentType: "image/png",
 				Reader:      bytes.NewReader(respBody),
 			},
 		},
