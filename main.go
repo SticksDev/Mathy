@@ -9,7 +9,10 @@ import (
 	"github.com/joho/godotenv"
 
 	"mathy/commands"
+	_ "mathy/commands/fun"
 	_ "mathy/commands/math"
+	_ "mathy/commands/reference"
+	_ "mathy/commands/utility"
 	"mathy/logger"
 )
 

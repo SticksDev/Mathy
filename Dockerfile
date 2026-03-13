@@ -14,9 +14,7 @@ RUN go mod download
 # copy project files and build
 COPY . .
 
-RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 \
-    go build -x -v  -o bot .
-
+RUN CGO_ENABLED=1 go build -o bot .
 
 # runner stage
 FROM alpine:3.19
