@@ -9,9 +9,10 @@ import (
 	"strings"
 
 	"github.com/bwmarrin/discordgo"
+
 	"mathy/commands"
-	"mathy/utils"
 	"mathy/logger"
+	"mathy/utils"
 )
 
 type OEIS struct{}
@@ -26,20 +27,23 @@ func (o *OEIS) Definition() *discordgo.ApplicationCommand {
 		Build()
 }
 
+type oeisResponse struct {
+	Results []oeisResult `json:"results"`
+}
+
 type oeisResult struct {
 	Number  int      `json:"number"`
 	Name    string   `json:"name"`
 	Data    string   `json:"data"`
 	Formula []string `json:"formula,omitempty"`
+	Comment []string `json:"comment,omitempty"`
 }
 
 func (o *OEIS) HandleCommand(ctx *utils.Context) {
 	query := ctx.Options()[0].StringValue()
-
 	ctx.Defer(false)
 
-	// OEIS API endpoint
-	searchURL := fmt.Sprintf("https://oeis.org/search?fmt=json&q=%s", url.QueryEscape(query))
+	searchURL := fmt.Sprintf("https://oeis.org/search?fmt=json&q=%s&start=0", url.QueryEscape(query))
 
 	resp, err := http.Get(searchURL)
 	if err != nil {
@@ -47,7 +51,7 @@ func (o *OEIS) HandleCommand(ctx *utils.Context) {
 		ctx.FollowupEmbed(&discordgo.MessageEmbed{
 			Title:       "Error",
 			Description: "Failed to connect to OEIS.",
-			Color:       0xff0000,
+			Color:       utils.ColorError,
 		})
 		return
 	}
@@ -58,51 +62,39 @@ func (o *OEIS) HandleCommand(ctx *utils.Context) {
 		ctx.FollowupEmbed(&discordgo.MessageEmbed{
 			Title:       "Error",
 			Description: "Failed to read OEIS response.",
-			Color:       0xff0000,
+			Color:       utils.ColorError,
 		})
 		return
 	}
 
-	var results []oeisResult
-	if err := json.Unmarshal(body, &results); err != nil {
-		if strings.Contains(string(body), `"results":null`) {
-			ctx.FollowupEmbed(&discordgo.MessageEmbed{
-				Title:       "No Results",
-				Description: fmt.Sprintf("No sequences found for: `%s`", query),
-				Color:       0xffaa00,
-			})
-			return
-		}
+	var oeisResp oeisResponse
+	if err := json.Unmarshal(body, &oeisResp); err != nil || oeisResp.Results == nil {
 		ctx.FollowupEmbed(&discordgo.MessageEmbed{
-			Title:       "Error",
-			Description: "Failed to parse OEIS response.",
-			Color:       0xff0000,
+			Title:       "No Results",
+			Description: fmt.Sprintf("No sequences found for: `%s`", query),
+			Color:       utils.ColorWarn,
 		})
 		return
 	}
 
+	results := oeisResp.Results
 	if len(results) == 0 {
 		ctx.FollowupEmbed(&discordgo.MessageEmbed{
 			Title:       "No Results",
 			Description: fmt.Sprintf("No sequences found for: `%s`", query),
-			Color:       0xffaa00,
+			Color:       utils.ColorWarn,
 		})
 		return
 	}
 
-	// Show top 3 results
-	var embeds []*discordgo.MessageEmbed
-	limit := 3
-	if len(results) < limit {
-		limit = len(results)
-	}
+	limit := min(len(results), 10)
+	var pages []*discordgo.MessageEmbed
 
 	for i := 0; i < limit; i++ {
 		seq := results[i]
 		seqID := fmt.Sprintf("A%06d", seq.Number)
 		seqURL := fmt.Sprintf("https://oeis.org/%s", seqID)
 
-		// Truncate data to first 10 terms
 		terms := strings.Split(seq.Data, ",")
 		if len(terms) > 10 {
 			terms = terms[:10]
@@ -110,28 +102,34 @@ func (o *OEIS) HandleCommand(ctx *utils.Context) {
 		dataPreview := strings.Join(terms, ", ") + ", ..."
 
 		embed := &discordgo.MessageEmbed{
-			Title:       fmt.Sprintf("%s: %s", seqID, truncate(seq.Name, 100)),
+			Title:       fmt.Sprintf("%s: %s", seqID, utils.Truncate(seq.Name, 200)),
 			URL:         seqURL,
-			Description: fmt.Sprintf("**Sequence:** %s", dataPreview),
-			Color:       0x3498db,
+			Description: fmt.Sprintf("**Sequence:** `%s`", dataPreview),
+			Color:       utils.ColorInfo,
 		}
 
 		if len(seq.Formula) > 0 {
 			embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
 				Name:  "Formula",
-				Value: truncate(seq.Formula[0], 200),
+				Value: utils.Truncate(seq.Formula[0], 1024),
 			})
 		}
 
-		embeds = append(embeds, embed)
+		if len(seq.Comment) > 0 {
+			embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
+				Name:  "Comment",
+				Value: utils.Truncate(seq.Comment[0], 1024),
+			})
+		}
+
+		pages = append(pages, embed)
 	}
 
-	ctx.FollowupEmbed(embeds...)
-}
-
-func truncate(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
+	if len(pages) == 1 {
+		ctx.FollowupEmbed(pages[0])
+		return
 	}
-	return s[:maxLen-3] + "..."
+
+	paginator := utils.NewPaginatedEmbed(pages)
+	paginator.Send(ctx)
 }

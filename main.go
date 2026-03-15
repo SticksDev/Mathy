@@ -33,6 +33,7 @@ func main() {
 	}
 
 	session.AddHandler(commands.Router)
+	session.AddHandler(commands.MessageRouter)
 
 	err = session.Open()
 	if err != nil {

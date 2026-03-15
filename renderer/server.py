@@ -36,9 +36,7 @@ TEMPLATE = r"""
 \begin{document}
 \color{white}
 \fontsize{28}{34}\selectfont
-\[
 %s
-\]
 \end{document}
 """
 

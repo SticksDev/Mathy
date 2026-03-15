@@ -16,8 +16,14 @@ type ModalHandler interface {
 	HandleModalSubmit(ctx *utils.Context)
 }
 
+// MessageListener handles regular messages (not interactions).
+type MessageListener interface {
+	HandleMessage(s *discordgo.Session, m *discordgo.MessageCreate)
+}
+
 var registry = make(map[string]Command)
 var modalRegistry = make(map[string]ModalHandler)
+var messageListeners []MessageListener
 var registered []*discordgo.ApplicationCommand
 
 func Register(cmd Command) {
@@ -26,6 +32,20 @@ func Register(cmd Command) {
 
 func RegisterModal(customID string, handler ModalHandler) {
 	modalRegistry[customID] = handler
+}
+
+func RegisterMessageListener(listener MessageListener) {
+	messageListeners = append(messageListeners, listener)
+}
+
+// MessageRouter handles MessageCreate events, dispatching to all registered listeners.
+func MessageRouter(s *discordgo.Session, m *discordgo.MessageCreate) {
+	if m.Author.Bot {
+		return
+	}
+	for _, listener := range messageListeners {
+		go listener.HandleMessage(s, m)
+	}
 }
 
 func Router(s *discordgo.Session, i *discordgo.InteractionCreate) {
@@ -42,32 +62,35 @@ func Router(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		if handler, ok := modalRegistry[customID]; ok {
 			handler.HandleModalSubmit(ctx)
 		}
+	case discordgo.InteractionMessageComponent:
+		utils.HandlePaginationInteraction(s, i)
 	}
 }
 
 func RegisterForGuild(s *discordgo.Session, guildID string) {
-	for _, cmd := range registry {
-		created, err := s.ApplicationCommandCreate(s.State.User.ID, guildID, cmd.Definition())
-		if err != nil {
-			logger.Error("Cannot create command %q: %v", cmd.Definition().Name, err)
-			continue
-		}
-		registered = append(registered, created)
-		logger.Info("Registered command: /%s", created.Name)
-	}
+	registered = bulkRegister(s, guildID)
 }
 
 func RegisterAll(s *discordgo.Session) {
-	// Register globally
+	registered = bulkRegister(s, "")
+}
+
+func bulkRegister(s *discordgo.Session, guildID string) []*discordgo.ApplicationCommand {
+	var defs []*discordgo.ApplicationCommand
 	for _, cmd := range registry {
-		created, err := s.ApplicationCommandCreate(s.State.User.ID, "", cmd.Definition())
-		if err != nil {
-			logger.Error("Cannot create command %q: %v", cmd.Definition().Name, err)
-			continue
-		}
-		registered = append(registered, created)
-		logger.Info("Registered command: /%s", created.Name)
+		defs = append(defs, cmd.Definition())
 	}
+
+	created, err := s.ApplicationCommandBulkOverwrite(s.State.User.ID, guildID, defs)
+	if err != nil {
+		logger.Error("Bulk command registration failed: %v", err)
+		return nil
+	}
+
+	for _, cmd := range created {
+		logger.Info("Registered command: /%s", cmd.Name)
+	}
+	return created
 }
 
 func RemoveAll(s *discordgo.Session, guildID string) {

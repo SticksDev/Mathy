@@ -4,19 +4,15 @@ package math
 
 import (
 	"fmt"
-	"mathy/commands"
-	"mathy/utils"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/SticksDev/go-exprtk"
 	"github.com/bwmarrin/discordgo"
-)
 
-const (
-	colorSuccess = 0x57F287 // green
-	colorError   = 0xED4245 // red
+	"mathy/commands"
+	"mathy/utils"
 )
 
 type Math struct{}
@@ -41,20 +37,17 @@ func (m *Math) HandleCommand(ctx *utils.Context) {
 	defer parser.Delete()
 
 	parser.SetExpression(expr)
-	err := parser.CompileExpression()
-	if err != nil {
+	if err := parser.CompileExpression(); err != nil {
 		errors := parser.CompileErrors()
-		var errorLines string
+		errorLines := err.Error()
 		if len(errors) > 0 {
 			errorLines = strings.Join(errors, "\n")
-		} else {
-			errorLines = err.Error()
 		}
 
 		ctx.FollowupEmbed(&discordgo.MessageEmbed{
 			Title:       "Expression Error",
 			Description: fmt.Sprintf("Failed to evaluate:\n```\n%s\n```\n**Errors:**\n```\n%s\n```", expr, errorLines),
-			Color:       colorError,
+			Color:       utils.ColorError,
 		})
 		return
 	}
@@ -72,6 +65,6 @@ func (m *Math) HandleCommand(ctx *utils.Context) {
 		Footer: &discordgo.MessageEmbedFooter{
 			Text: fmt.Sprintf("Evaluated in %s", elapsed),
 		},
-		Color: colorSuccess,
+		Color: utils.ColorSuccess,
 	})
 }

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/bwmarrin/discordgo"
+
 	"mathy/commands"
 	"mathy/utils"
 )
@@ -24,49 +25,26 @@ func (s *Stats) Definition() *discordgo.ApplicationCommand {
 
 func (s *Stats) HandleCommand(ctx *utils.Context) {
 	uptime := time.Since(startTime)
-
-	// Get server count
 	serverCount := len(ctx.Session.State.Guilds)
 
-	// Memory stats
 	var mem runtime.MemStats
 	runtime.ReadMemStats(&mem)
 	memUsed := float64(mem.Alloc) / 1024 / 1024
 
-	embed := &discordgo.MessageEmbed{
-		Title: "Bot Statistics",
-		Color: 0x2ecc71,
-		Fields: []*discordgo.MessageEmbedField{
-			{
-				Name:   "Servers",
-				Value:  fmt.Sprintf("%d", serverCount),
-				Inline: true,
+	ctx.Reply(utils.Response{
+		Embeds: []*discordgo.MessageEmbed{{
+			Title: "Bot Statistics",
+			Color: utils.ColorSuccess,
+			Fields: []*discordgo.MessageEmbedField{
+				{Name: "Servers", Value: fmt.Sprintf("%d", serverCount), Inline: true},
+				{Name: "Uptime", Value: formatDuration(uptime), Inline: true},
+				{Name: "Memory", Value: fmt.Sprintf("%.2f MB", memUsed), Inline: true},
+				{Name: "Go Version", Value: runtime.Version(), Inline: true},
+				{Name: "Goroutines", Value: fmt.Sprintf("%d", runtime.NumGoroutine()), Inline: true},
 			},
-			{
-				Name:   "Uptime",
-				Value:  formatDuration(uptime),
-				Inline: true,
-			},
-			{
-				Name:   "Memory",
-				Value:  fmt.Sprintf("%.2f MB", memUsed),
-				Inline: true,
-			},
-			{
-				Name:   "Go Version",
-				Value:  runtime.Version(),
-				Inline: true,
-			},
-			{
-				Name:   "Goroutines",
-				Value:  fmt.Sprintf("%d", runtime.NumGoroutine()),
-				Inline: true,
-			},
-		},
-		Timestamp: time.Now().Format(time.RFC3339),
-	}
-
-	ctx.Reply(utils.Response{Embeds: []*discordgo.MessageEmbed{embed}})
+			Timestamp: time.Now().Format(time.RFC3339),
+		}},
+	})
 }
 
 func formatDuration(d time.Duration) string {

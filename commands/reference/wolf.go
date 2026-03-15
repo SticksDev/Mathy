@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/bwmarrin/discordgo"
+
 	"mathy/commands"
 	"mathy/logger"
 	"mathy/utils"
@@ -26,7 +27,6 @@ func (w *Wolf) Definition() *discordgo.ApplicationCommand {
 		Build()
 }
 
-// Wolfram Alpha API response structures
 type wolframResponse struct {
 	XMLName xml.Name     `xml:"queryresult"`
 	Success bool         `xml:"success,attr"`
@@ -56,14 +56,11 @@ func (w *Wolf) HandleCommand(ctx *utils.Context) {
 	}
 
 	query := ctx.Options()[0].StringValue()
-
 	ctx.Defer(false)
 
-	// Query Wolfram Alpha API
 	apiURL := fmt.Sprintf(
 		"https://api.wolframalpha.com/v2/query?appid=%s&input=%s&format=plaintext",
-		appID,
-		url.QueryEscape(query),
+		appID, url.QueryEscape(query),
 	)
 
 	resp, err := http.Get(apiURL)
@@ -72,7 +69,7 @@ func (w *Wolf) HandleCommand(ctx *utils.Context) {
 		ctx.FollowupEmbed(&discordgo.MessageEmbed{
 			Title:       "Error",
 			Description: "Failed to connect to Wolfram|Alpha.",
-			Color:       0xff0000,
+			Color:       utils.ColorError,
 		})
 		return
 	}
@@ -84,7 +81,7 @@ func (w *Wolf) HandleCommand(ctx *utils.Context) {
 		ctx.FollowupEmbed(&discordgo.MessageEmbed{
 			Title:       "Error",
 			Description: "Failed to parse Wolfram|Alpha response.",
-			Color:       0xff0000,
+			Color:       utils.ColorError,
 		})
 		return
 	}
@@ -93,81 +90,66 @@ func (w *Wolf) HandleCommand(ctx *utils.Context) {
 		ctx.FollowupEmbed(&discordgo.MessageEmbed{
 			Title:       "No Results",
 			Description: fmt.Sprintf("Wolfram|Alpha couldn't interpret: `%s`", query),
-			Color:       0xffaa00,
+			Color:       utils.ColorWarn,
 		})
 		return
 	}
 
-	// Build embed with relevant pods
-	embed := &discordgo.MessageEmbed{
-		Title: truncate(query, 100),
-		URL:   fmt.Sprintf("https://www.wolframalpha.com/input?i=%s", url.QueryEscape(query)),
-		Color: 0xff6600,
-	}
+	queryURL := fmt.Sprintf("https://www.wolframalpha.com/input?i=%s", url.QueryEscape(query))
 
-	// Find primary result and other interesting pods
-	var primaryText string
-	fieldsAdded := 0
-	maxFields := 6
-
+	// Filter pods with text content, skip input interpretation
+	var pods []wolframPod
 	for _, pod := range result.Pods {
-		if fieldsAdded >= maxFields {
-			break
-		}
-
-		// Skip input interpretation pod
 		if strings.Contains(strings.ToLower(pod.Title), "input") {
 			continue
 		}
-
-		// Get text from subpods
-		var texts []string
-		for _, subpod := range pod.SubPods {
-			if subpod.PlainText != "" {
-				texts = append(texts, subpod.PlainText)
-			}
-		}
-
-		if len(texts) == 0 {
-			continue
-		}
-
-		podText := strings.Join(texts, "\n")
-
-		// If this is the primary pod, use it as description
-		if pod.Primary && primaryText == "" {
-			primaryText = podText
-			continue
-		}
-
-		// Add as field
-		embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
-			Name:  pod.Title,
-			Value: truncate(podText, 1024),
-		})
-		fieldsAdded++
-	}
-
-	if primaryText != "" {
-		embed.Description = truncate(primaryText, 2048)
-	} else if len(embed.Fields) == 0 {
-		// If no primary and no fields, use first pod content
-		for _, pod := range result.Pods {
-			for _, subpod := range pod.SubPods {
-				if subpod.PlainText != "" {
-					embed.Description = truncate(subpod.PlainText, 2048)
-					break
-				}
-			}
-			if embed.Description != "" {
+		for _, sp := range pod.SubPods {
+			if sp.PlainText != "" {
+				pods = append(pods, pod)
 				break
 			}
 		}
 	}
 
-	embed.Footer = &discordgo.MessageEmbedFooter{
-		Text: "Powered by Wolfram|Alpha",
+	if len(pods) == 0 {
+		ctx.FollowupEmbed(&discordgo.MessageEmbed{
+			Title:       "No Results",
+			Description: fmt.Sprintf("Wolfram|Alpha returned no text results for: `%s`", query),
+			Color:       utils.ColorWarn,
+		})
+		return
 	}
 
-	ctx.FollowupEmbed(embed)
+	limit := min(len(pods), 10)
+	var pages []*discordgo.MessageEmbed
+
+	for i := 0; i < limit; i++ {
+		pod := pods[i]
+
+		var texts []string
+		for _, sp := range pod.SubPods {
+			if sp.PlainText != "" {
+				texts = append(texts, sp.PlainText)
+			}
+		}
+		content := strings.Join(texts, "\n")
+
+		pages = append(pages, &discordgo.MessageEmbed{
+			Title:       pod.Title,
+			URL:         queryURL,
+			Description: fmt.Sprintf("```\n%s\n```", utils.Truncate(content, 2000)),
+			Color:       utils.ColorOrange,
+			Footer: &discordgo.MessageEmbedFooter{
+				Text: "Powered by Wolfram|Alpha",
+			},
+		})
+	}
+
+	if len(pages) == 1 {
+		ctx.FollowupEmbed(pages[0])
+		return
+	}
+
+	paginator := utils.NewPaginatedEmbed(pages)
+	paginator.Send(ctx)
 }

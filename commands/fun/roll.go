@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/bwmarrin/discordgo"
+
 	"mathy/commands"
 	"mathy/utils"
 )
@@ -48,7 +49,6 @@ func (r *Roll) HandleCommand(ctx *utils.Context) {
 		return
 	}
 
-	// Parse dice notation
 	numDice := 1
 	if matches[1] != "" {
 		numDice, _ = strconv.Atoi(matches[1])
@@ -59,31 +59,22 @@ func (r *Roll) HandleCommand(ctx *utils.Context) {
 		modifier, _ = strconv.Atoi(matches[3])
 	}
 
-	// Validate
 	if numDice < 1 || numDice > 100 {
-		ctx.Reply(utils.Response{
-			Content:   "Number of dice must be between 1 and 100.",
-			Ephemeral: true,
-		})
+		ctx.Reply(utils.Response{Content: "Number of dice must be between 1 and 100.", Ephemeral: true})
 		return
 	}
 	if sides < 2 || sides > 1000 {
-		ctx.Reply(utils.Response{
-			Content:   "Number of sides must be between 2 and 1000.",
-			Ephemeral: true,
-		})
+		ctx.Reply(utils.Response{Content: "Number of sides must be between 2 and 1000.", Ephemeral: true})
 		return
 	}
 
-	// Roll the dice
 	rolls := make([]int, numDice)
 	sum := 0
-	for i := 0; i < numDice; i++ {
+	for i := range rolls {
 		rolls[i] = rand.Intn(sides) + 1
 		sum += rolls[i]
 	}
 
-	// Sort unless unsorted flag is set
 	displayRolls := make([]int, len(rolls))
 	copy(displayRolls, rolls)
 	if !unsorted {
@@ -92,7 +83,6 @@ func (r *Roll) HandleCommand(ctx *utils.Context) {
 
 	total := sum + modifier
 
-	// Format output
 	rollStrs := make([]string, len(displayRolls))
 	for i, roll := range displayRolls {
 		rollStrs[i] = strconv.Itoa(roll)
@@ -123,7 +113,7 @@ func (r *Roll) HandleCommand(ctx *utils.Context) {
 		Embeds: []*discordgo.MessageEmbed{{
 			Title:       fmt.Sprintf("Rolling %s%s", dice, sortNote),
 			Description: description,
-			Color:       0x9b59b6,
+			Color:       utils.ColorPurple,
 		}},
 	})
 }
